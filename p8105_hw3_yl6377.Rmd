@@ -10,7 +10,12 @@ date: "2026-10-14"
 library(tidyverse)
 library(p8105.datasets)
 library(patchwork)
+library(lubridate)
+library(janitor)
+library(knitr)
+```
 
+```{r}
 data("ny_noaa")
 
 dim(ny_noaa)
@@ -318,4 +323,205 @@ daily_activity_plot =
 daily_activity_plot
 ```
 The three panels show how average activity changes throughout the day for men and women in each education category. The smooth curves help identify periods of relatively high and low activity and make it easier to compare daily patterns between sexes. Similar curve shapes would suggest similar daily activity patterns, whereas differences in curve height or timing would suggest differences in average activity levels or when activity occurs. Any specific claims about peak activity times or differences between groups should be based on the plotted curves.
+
+
+#Problem 3
+```{r}
+zip_files = c(
+  "data/citibike/Jan 2020 Citi.csv.zip",
+  "data/citibike/Jan 2024 Citi.csv.zip",
+  "data/citibike/July 2020 Citi.csv.zip",
+  "data/citibike/July 2024 Citi.csv.zip"
+)
+
+data_dir = "data/citibike"
+dir.create(
+  data_dir,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+walk(zip_files, ~ unzip(.x, exdir = data_dir))
+```
+
+```{r}
+csv_files = c(
+  "data/citibike/Jan 2020 Citi.csv",
+  "data/citibike/Jan 2024 Citi.csv",
+  "data/citibike/July 2020 Citi.csv",
+  "data/citibike/July 2024 Citi.csv"
+)
+
+citibike_raw =
+  map2_dfr(
+    csv_files,
+    c(2020L, 2024L, 2020L, 2024L),
+    \(file, yr) {
+      read_csv(file, show_col_types = FALSE) |>
+        clean_names() |>
+        mutate(
+          year = yr,
+          month = if_else(
+            str_detect(file, "Jan"),
+            1L,
+            7L
+          )
+        )
+    }
+  )
+
+```
+
+3.1
+```{r}
+citibike_df =
+  citibike_raw |>
+  mutate(
+    ride_duration = as.numeric(duration),
+    day_of_week = factor(
+      weekdays,
+      levels = c(
+        "Monday", "Tuesday", "Wednesday",
+        "Thursday", "Friday", "Saturday", "Sunday"
+      )
+    ),
+    member_casual = factor(
+      member_casual,
+      levels = c("casual", "member")
+    ),
+    rideable_type = factor(rideable_type)
+  ) |>
+  filter(
+    !is.na(ride_duration),
+    ride_duration > 0,
+    ride_duration < 240
+  )
+```
+The Citi Bike dataset contains `r nrow(citibike_df)` rides and `r ncol(citibike_df)` variables after combining the four monthly datasets and removing records with invalid timestamps or ride durations. Each row represents one bike ride. The variables include ride identifiers, bike type, start and end times, station information, and membership status. Additional variables were created for ride duration in minutes, year, month, and day of the week. The dataset contains a 1% sample of rides lasting less than four hours in January and July of 2020 and 2024, rather than all Citi Bike rides.
+
+
+3.2 
+```{r}
+ride_counts =
+  citibike_df |>
+  count(year, month, member_casual) |>
+  pivot_wider(
+    names_from = member_casual,
+    values_from = n,
+    values_fill = 0
+  ) |>
+  mutate(
+    month = factor(
+      month,
+      levels = c(1, 7),
+      labels = c("January", "July")
+    )
+  ) |>
+  arrange(year, month)
+
+ride_counts |>
+  kable(
+    col.names = c(
+      "Year", "Month", "Casual Riders", "Members"
+    ),
+    caption = "Total Rides by Year, Month, and Membership Status"
+  )
+```
+The table compares the number of rides taken by casual riders and members across the four sampled months. Differences between membership groups may reflect differences in how frequently each group uses Citi Bike. Comparing January and July also helps assess seasonal patterns, while comparing the same month across years helps assess changes over time. Because the dataset is a 1% sample, the counts represent rides in the sample rather than all rides in the Citi Bike system.
+
+
+3.3
+```{r}
+top_stations =
+  citibike_df |>
+  filter(year == 2024, month == 7) |>
+  filter(!is.na(start_station_name)) |>
+  count(
+    start_station_name,
+    name = "number_of_rides",
+    sort = TRUE
+  ) |>
+  slice_head(n = 5)
+
+top_stations |>
+  kable(
+    col.names = c("Starting Station", "Number of Rides"),
+    caption = "Five Most Popular Starting Stations in July 2024"
+  )
+```
+The table identifies the five most popular starting stations in the July 2024 sample. Stations with higher counts may serve as important residential, commuting, or recreational locations. The counts describe sampled rides originating at each station, not the complete system-wide totals.
+
+3.4
+```{r}
+median_duration =
+  citibike_df |>
+  group_by(year, month, day_of_week) |>
+  summarize(
+    median_duration = median(ride_duration),
+    .groups = "drop"
+  )
+
+ggplot(
+  median_duration,
+  aes(
+    x = day_of_week,
+    y = median_duration,
+    color = factor(month),
+    group = month
+  )
+) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~year) +
+  scale_color_discrete(
+    name = "Month",
+    labels = c("January", "July")
+  ) +
+  labs(
+    title = "Median Ride Duration by Day, Month, and Year",
+    x = "Day of the Week",
+    y = "Median Ride Duration (minutes)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+The plot compares median ride duration across weekdays, months, and years. Differences between weekdays and weekends may indicate that rides serve different purposes on different days. Differences between January and July may reflect seasonal changes in riding behavior. Comparing the two year panels reveals whether these patterns differ between 2020 and 2024. The median provides a measure of typical ride duration that is less sensitive to unusually long rides than the mean.
+
+3.5 
+```{r}
+citibike_2024 =
+  citibike_df |>
+  filter(year == 2024) |>
+  mutate(
+    month_label = factor(
+      month,
+      levels = c(1, 7),
+      labels = c("January", "July")
+    )
+  )
+
+ggplot(
+  citibike_2024,
+  aes(
+    x = member_casual,
+    y = ride_duration,
+    fill = rideable_type
+  )
+) +
+  geom_violin(
+    alpha = 0.6,
+    position = position_dodge(width = 0.8),
+    trim = TRUE
+  ) +
+  facet_wrap(~month_label) +
+  coord_cartesian(ylim = c(0, 60)) +
+  labs(
+    title = "Ride Duration Distributions in 2024",
+    x = "Membership Status",
+    y = "Ride Duration (minutes)",
+    fill = "Bike Type"
+  ) +
+  theme_minimal()
+```
+The figure compares ride-duration distributions by month, membership status, and bike type in 2024. The violin shapes show where ride durations are more concentrated and how widely they vary. Differences between casual riders and members may indicate differences in riding behavior, while differences between bike types may reflect how riders use traditional and electric bicycles. Comparing January and July also provides information about seasonal variation. The vertical axis is limited to 60 minutes for readability, but the underlying data are not removed by this display limit.
 
