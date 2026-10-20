@@ -1,0 +1,321 @@
+---
+title: "p8105_hw3_yl6377"
+output: html_document
+date: "2026-10-14"
+---
+
+#Problem 1
+
+```{r}
+library(tidyverse)
+library(p8105.datasets)
+library(patchwork)
+
+data("ny_noaa")
+
+dim(ny_noaa)
+names(ny_noaa)
+glimpse(ny_noaa)
+head(ny_noaa)
+
+colSums(is.na(ny_noaa))
+
+colMeans(is.na(ny_noaa))
+
+missing_summary =
+  tibble(
+    variable = names(ny_noaa),
+    n_missing = colSums(is.na(ny_noaa)),
+    prop_missing = colMeans(is.na(ny_noaa))
+  )
+
+missing_summary
+```
+
+Clean data
+```{r}
+ny_noaa_clean =
+  ny_noaa |>
+  separate(
+    date,
+    into = c("year", "month", "day"),
+    sep = "-"
+  ) |>
+  mutate(
+    year = as.integer(year),
+    month = as.integer(month),
+    day = as.integer(day),
+    tmax = as.numeric(tmax) / 10,
+    tmin = as.numeric(tmin) / 10,
+    prcp = as.numeric(prcp) / 10,
+    snow = as.numeric(snow),
+    snwd = as.numeric(snwd)
+  )
+```
+
+The `ny_noaa` dataset contains `r nrow(ny_noaa)` observations and `r ncol(ny_noaa)` variables. Each row represents a weather observation at a particular weather station on a particular date. The key variables are `r paste(names(ny_noaa), collapse = ", ")`. The dataset contains missing values in several weather variables, including `r sum(is.na(pull(ny_noaa, prcp)))` missing precipitation values, `r sum(is.na(pull(ny_noaa, snow)))` missing snowfall values, `r sum(is.na(pull(ny_noaa, tmax)))` missing maximum temperature values, and `r sum(is.na(pull(ny_noaa, tmin)))` missing minimum temperature values.
+
+
+For snowfall, what are the most commonly observed values? Why?
+```{r}
+ny_noaa_clean |>
+  count(snow, sort = TRUE) |>
+  slice_head(n = 10)
+```
+The most common snowfall value is 0 because snowfall is a weather event that does not occur every day. Many observations are recorded on days when no snow falls, so zero appears more frequently than any positive snowfall value. In addition, the dataset includes observations from multiple weather stations and across many years, increasing the number of days with no snowfall.
+
+
+A two panel plot
+```{r}
+monthly_tmax =
+  ny_noaa_clean |>
+  filter(month == 1 | month == 7) |>
+  group_by(id, year, month) |>
+  summarize(
+    avg_tmax = mean(tmax, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+temperature_plot =
+  ggplot(
+    monthly_tmax,
+    aes(x = year, y = avg_tmax, group = id)
+  ) +
+  geom_line(alpha = 0.2, linewidth = 0.3) +
+  facet_wrap(
+    ~ month,
+    labeller = as_labeller(
+      c("1" = "January", "7" = "July")
+    )
+  ) +
+  labs(
+    title = "Average Maximum Temperature in January and July",
+    x = "Year",
+    y = "Average Maximum Temperature (°C)"
+  ) +
+  theme_minimal()
+
+temperature_plot
+
+```
+
+Two-panel plot
+(i) tmax vs tmin
+```{r}
+tt_plot =
+  ggplot(
+    ny_noaa_clean,
+    aes(x = tmin, y = tmax)
+  ) +
+  geom_bin2d() +
+  labs(
+    title = "Maximum vs Minimum Temperature",
+    x = "Minimum Temperature (°C)",
+    y = "Maximum Temperature (°C)",
+    fill = "Count"
+  ) +
+  theme_minimal()
+
+tt_plot
+
+```
+
+(ii)the distribution of snowfall values greater than 0 and less than 100 separately by year
+```{r}
+snowfall_data =
+  ny_noaa_clean |>
+  filter(
+    !is.na(snow),
+    snow > 0,
+    snow < 100
+  )
+
+snowfall_plot =
+  ggplot(
+    snowfall_data,
+    aes(x = factor(year), y = snow)
+  ) +
+  geom_boxplot(outlier.alpha = 0.3) +
+  labs(
+    title = "Snowfall Distribution by Year",
+    x = "Year",
+    y = "Snowfall (mm)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+snowfall_plot
+
+```
+
+#Problem 2
+
+```{r}
+library(janitor)
+library(knitr)
+
+nhanes_covar =
+  read_csv(
+    "https://p8105.com/data/nhanes_covar.csv",
+    skip = 4
+  ) |>
+  clean_names() |>
+  filter(age >= 21) |>
+  drop_na() |>
+  mutate(
+    sex = factor(
+      sex,
+      levels = c(1, 2),
+      labels = c("Male", "Female")
+    ),
+    education = factor(
+      education,
+      levels = c(1, 2, 3),
+      labels = c(
+        "Less than high school",
+        "High school equivalent",
+        "More than high school"
+      )
+    )
+  )
+
+nhanes_accel =
+  read_csv(
+    "https://p8105.com/data/nhanes_accel.csv"
+  ) |>
+  clean_names()
+
+nhanes_df =
+  inner_join(nhanes_covar, nhanes_accel, by = "seqn")
+```
+The final dataset contains r nrow(nhanes_df) participants and r ncol(nhanes_df) variables after excluding participants younger than 21 years and those with missing demographic data. The demographic and accelerometer datasets were merged using participant ID. Sex and education were encoded as factors with meaningful labels and an appropriate ordering.
+
+2.1 
+```{r}
+nhanes_df |>
+  count(education, sex) |>
+  pivot_wider(
+    names_from = sex,
+    values_from = n,
+    values_fill = 0
+  ) |>
+  kable(
+    col.names = c("Education", "Men", "Women"),
+    caption = "Number of Participants by Sex and Education"
+  )
+```
+
+2.2
+```{r}
+age_plot =
+  ggplot(
+    nhanes_df,
+    aes(x = sex, y = age, fill = sex)
+  ) +
+  geom_boxplot() +
+  facet_wrap(~ education) +
+  labs(
+    title = "Age Distribution by Sex and Education",
+    x = "Sex",
+    y = "Age (years)",
+    fill = "Sex"
+  ) +
+  theme_minimal()
+
+age_plot
+```
+
+The table shows how the numbers of male and female participants differ across education categories. The boxplots allow us to compare the age distributions of men and women within each education category, including their medians, variability, and potential outliers. Differences in age distributions across education groups may reflect demographic differences among participants. The specific conclusions should be based on the observed table and plots.
+
+```{r}
+nhanes_df =
+  nhanes_df |>
+  mutate(
+    total_activity = rowSums(
+      across(min1:min1440),
+      na.rm = TRUE
+    )
+  )
+```
+
+```{r}
+total_activity_plot =
+  ggplot(
+    nhanes_df,
+    aes(
+      x = age,
+      y = total_activity,
+      color = sex
+    )
+  ) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(se = FALSE) +
+  facet_wrap(~ education) +
+  labs(
+    title = "Total Daily Activity by Age, Sex, and Education",
+    x = "Age (years)",
+    y = "Total Daily MIMS",
+    color = "Sex"
+  ) +
+  theme_minimal()
+
+total_activity_plot
+```
+The scatterplots show the relationship between age and total daily activity across education categories, with separate smooth trends for men and women. The smooth curves help identify whether activity tends to increase or decrease with age and whether the patterns differ by sex or education. The degree of overlap and separation between the curves can also indicate differences in total activity between men and women. These patterns describe associations and do not establish causal relationships.
+
+```{r}
+activity_by_time =
+  nhanes_df |>
+  pivot_longer(
+    cols = min1:min1440,
+    names_to = "minute",
+    names_prefix = "min",
+    values_to = "mims"
+  ) |>
+  mutate(
+    minute = as.integer(minute)
+  ) |>
+  group_by(education, sex, minute) |>
+  summarize(
+    mean_activity = mean(mims, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+daily_activity_plot =
+  ggplot(
+    activity_by_time,
+    aes(
+      x = minute,
+      y = mean_activity,
+      color = sex
+    )
+  ) +
+  geom_smooth(
+    se = FALSE,
+    span = 0.08
+  ) +
+  facet_wrap(~ education, nrow = 1) +
+  scale_x_continuous(
+    breaks = seq(0, 1440, by = 240),
+    labels = c("12 AM", "4 AM", "8 AM",
+               "12 PM", "4 PM", "8 PM", "12 AM")
+  ) +
+  labs(
+    title = "Average Activity Across the Day",
+    x = "Time of Day",
+    y = "Mean MIMS",
+    color = "Sex"
+  ) +
+  theme_minimal()
+
+daily_activity_plot
+```
+The three panels show how average activity changes throughout the day for men and women in each education category. The smooth curves help identify periods of relatively high and low activity and make it easier to compare daily patterns between sexes. Similar curve shapes would suggest similar daily activity patterns, whereas differences in curve height or timing would suggest differences in average activity levels or when activity occurs. Any specific claims about peak activity times or differences between groups should be based on the plotted curves.
+
