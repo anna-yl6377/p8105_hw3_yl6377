@@ -4,8 +4,6 @@ output: html_document
 date: "2026-10-14"
 ---
 
-#Problem 1
-
 ```{r}
 library(tidyverse)
 library(p8105.datasets)
@@ -15,6 +13,9 @@ library(janitor)
 library(knitr)
 ```
 
+#Problem 1
+
+Data Import
 ```{r}
 data("ny_noaa")
 
@@ -104,7 +105,7 @@ temperature_plot
 
 ```
 
-Two-panel plot
+Two-panel Plot
 (i) tmax vs tmin
 ```{r}
 tt_plot =
@@ -160,10 +161,8 @@ snowfall_plot
 
 #Problem 2
 
+Data Import, Cleaning, and Merging
 ```{r}
-library(janitor)
-library(knitr)
-
 nhanes_covar =
   read_csv(
     "https://p8105.com/data/nhanes_covar.csv",
@@ -200,7 +199,7 @@ nhanes_df =
 ```
 The final dataset contains r nrow(nhanes_df) participants and r ncol(nhanes_df) variables after excluding participants younger than 21 years and those with missing demographic data. The demographic and accelerometer datasets were merged using participant ID. Sex and education were encoded as factors with meaningful labels and an appropriate ordering.
 
-2.1 
+2.1 Number of Men and Women in Each Education Category
 ```{r}
 nhanes_df |>
   count(education, sex) |>
@@ -215,7 +214,7 @@ nhanes_df |>
   )
 ```
 
-2.2
+2.2 Age Distributions by Sex and Education Category
 ```{r}
 age_plot =
   ggplot(
@@ -237,6 +236,7 @@ age_plot
 
 The table shows how the numbers of male and female participants differ across education categories. The boxplots allow us to compare the age distributions of men and women within each education category, including their medians, variability, and potential outliers. Differences in age distributions across education groups may reflect demographic differences among participants. The specific conclusions should be based on the observed table and plots.
 
+2.3 Total Daily Activity Versus Age
 ```{r}
 nhanes_df =
   nhanes_df |>
@@ -273,6 +273,7 @@ total_activity_plot
 ```
 The scatterplots show the relationship between age and total daily activity across education categories, with separate smooth trends for men and women. The smooth curves help identify whether activity tends to increase or decrease with age and whether the patterns differ by sex or education. The degree of overlap and separation between the curves can also indicate differences in total activity between men and women. These patterns describe associations and do not establish causal relationships.
 
+2.4 Twenty-Four-Hour Activity Time Courses
 ```{r}
 activity_by_time =
   nhanes_df |>
@@ -326,6 +327,8 @@ The three panels show how average activity changes throughout the day for men an
 
 
 #Problem 3
+
+Data Import
 ```{r}
 zip_files = c(
   "data/citibike/Jan 2020 Citi.csv.zip",
